@@ -4,7 +4,7 @@ import { ethers } from 'ethers';
  * Message is a generic type that represents any cryptographically signed Message on Farcaster
  *
  * @data - the data that is being signed.
- * @hash - the keccak256 hash of the message.
+ * @hash - the blake2b hash of the message.
  * @signature - the ecdsa signature of the hash of the message.
  * @signer - the ethereum address whose private key was used to create the signature
  */
@@ -12,6 +12,7 @@ export type Message<T = Body> = {
   data: Data<T>;
   hash: string;
   signature: string;
+  signatureType: SignatureAlgorithm;
   signer: string;
 };
 
@@ -30,7 +31,14 @@ export type Data<T = Body> = {
   username: string;
 };
 
-export type Body = RootBody | CastBody | ReactionBody | VerificationAddBody | VerificationRemoveBody;
+export type Body =
+  | RootBody
+  | CastBody
+  | ReactionBody
+  | VerificationAddBody
+  | VerificationRemoveBody
+  | SignerAddBody
+  | SignerRemoveBody;
 
 // ===========================
 //  Root Types
@@ -161,11 +169,9 @@ export type VerificationAddBody = {
 /**
  * A VerificationAddFactoryTransientParams is passed to the VerificationAdd factory
  *
- * @privateKey - the private key for signing the Verification message
  * @ethWallet - the wallet to generate and/or sign the claimHash
  */
-export type VerificationAddFactoryTransientParams = {
-  privateKey?: Uint8Array;
+export type VerificationAddFactoryTransientParams = MessageFactoryTransientParams & {
   ethWallet?: ethers.Wallet;
 };
 
@@ -184,7 +190,7 @@ export type VerificationClaim = {
 export type VerificationRemove = Message<VerificationRemoveBody>;
 
 /**
- * A VerificationRemoveBody represents the deletion of a verification
+ * A VerificationRemoveBody represents the removal of a verification
  *
  * @claimHash - hash of the verification claim
  * @schema -
@@ -197,12 +203,64 @@ export type VerificationRemoveBody = {
 /**
  * A VerificationRemoveFactoryTransientParams is passed to the VerificationRemove factory
  *
- * @privateKey - the private key for signing the Verification message
  * @externalUri - the external address to generate the claimHash
  */
-export type VerificationRemoveFactoryTransientParams = {
-  privateKey?: Uint8Array;
+export type VerificationRemoveFactoryTransientParams = MessageFactoryTransientParams & {
   externalUri?: string;
+};
+
+// ===========================
+// Signer Types
+// ===========================
+
+export type SignerMessage = SignerAdd | SignerRemove;
+
+/** SignerAdd message */
+export type SignerAdd = Message<SignerAddBody>;
+
+/**
+ * A SignerAddBody represents a bi-directional proof between a child signer and parent signer
+ *
+ * @childKey - the child public key
+ * @edgeHash - the hash of the SignerEdge containing both public keys
+ * @childSignature - the signature of the edgeHash, signed by childKey
+ * @childSignatureType - type of child signature from set of supported types
+ * @schema -
+ */
+export type SignerAddBody = {
+  childKey: string;
+  edgeHash: string;
+  childSignature: string;
+  childSignatureType: SignatureAlgorithm.Ed25519;
+  schema: 'farcaster.xyz/schemas/v1/signer-add';
+};
+
+/**
+ * A SignerAddFactoryTransientParams is passed to the SignerAdd factory
+ *
+ * @childSigner - the Ed25519 signer for signing the edgeHash
+ */
+export type SignerAddFactoryTransientParams = MessageFactoryTransientParams & {
+  childSigner?: Ed25519Signer;
+};
+
+/**
+ * A SignerEdge is an object that contains both the child public key and parent public key
+ */
+export type SignerEdge = {
+  childKey: string;
+  parentKey: string;
+};
+
+/** SignerRemove message */
+export type SignerRemove = Message<SignerRemoveBody>;
+
+/**
+ * A SignerRemoveBody represents the removal of a signer
+ */
+export type SignerRemoveBody = {
+  childKey: string;
+  schema: 'farcaster.xyz/schemas/v1/signer-remove';
 };
 
 // ===========================
@@ -237,4 +295,31 @@ export type HTTPURI = string;
 export type KeyPair = {
   privateKey: Uint8Array;
   publicKey: Uint8Array;
+};
+
+/** SignatureAlgorithm enum */
+export enum SignatureAlgorithm {
+  Ed25519 = 'ed25519',
+  EthereumPersonalSign = 'eth-personal-sign',
+}
+
+/** MessageFactoryTransientParams is the generic transient params type for message factories */
+export type MessageFactoryTransientParams = {
+  signer?: MessageSigner;
+};
+
+export type MessageSigner = Ed25519Signer | EthereumSigner;
+
+/** An Ed25519Signer is a MessageSigner object with a Ed25519 private key */
+export type Ed25519Signer = {
+  privateKey: Uint8Array;
+  signerKey: string; // Public key hex
+  type: SignatureAlgorithm.Ed25519;
+};
+
+/** An EthereumSigner is a MessageSigner object with an ethers wallet */
+export type EthereumSigner = {
+  wallet: ethers.Wallet;
+  signerKey: string; // Address
+  type: SignatureAlgorithm.EthereumPersonalSign;
 };
